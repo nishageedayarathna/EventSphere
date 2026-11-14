@@ -1,27 +1,32 @@
-
 from pathlib import Path
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
+# Project root directory
 BASE_DIR = Path(__file__).resolve().parents[2]
 
+# Local SQLite database file
 DATABASE_URL = f"sqlite:///{BASE_DIR / 'eventsphere.db'}"
 
+# Create database engine
 engine = create_engine(
     DATABASE_URL,
     connect_args={"check_same_thread": False}
 )
 
+# Create database sessions
 SessionLocal = sessionmaker(
     autocommit=False,
     autoflush=False,
     bind=engine
 )
 
+# Base class for database models
 Base = declarative_base()
 
 
+# Database dependency for FastAPI routes
 def get_db():
     db = SessionLocal()
 
@@ -31,19 +36,9 @@ def get_db():
         db.close()
 
 
+# Create all database tables
 def create_database():
-    from app.models.entities import (
-        User,
-        Venue,
-        Event,
-        TicketCategory,
-        Booking,
-        Payment,
-        Ticket,
-        VenueHireRequest,
-        WaitlistEntry,
-        AgentMessage,
-        AgentState
-    )
+    # Import models before creating tables
+    from app.models import entities
 
     Base.metadata.create_all(bind=engine)

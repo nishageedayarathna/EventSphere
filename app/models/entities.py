@@ -1,4 +1,3 @@
-
 from datetime import datetime, timezone
 
 from sqlalchemy import (
@@ -9,8 +8,7 @@ from sqlalchemy import (
     String,
     Text,
     Float,
-    JSON,
-    UniqueConstraint
+    JSON
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -27,7 +25,9 @@ class User(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     full_name: Mapped[str] = mapped_column(String(120))
-    email: Mapped[str] = mapped_column(String(150), unique=True, index=True)
+    email: Mapped[str] = mapped_column(
+        String(150), unique=True, index=True
+    )
     password_hash: Mapped[str] = mapped_column(String(255))
     role: Mapped[str] = mapped_column(String(20), default="attendee")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -47,7 +47,9 @@ class Venue(Base):
     description: Mapped[str] = mapped_column(Text, default="")
     image: Mapped[str] = mapped_column(String(500), default="")
     hourly_hire_rate: Mapped[float] = mapped_column(Float, default=0)
-    open_for_private_hire: Mapped[bool] = mapped_column(Boolean, default=True)
+    open_for_private_hire: Mapped[bool] = mapped_column(
+        Boolean, default=True
+    )
 
 
 # 3. EVENTS
@@ -101,9 +103,13 @@ class Payment(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     booking_id: Mapped[int] = mapped_column(ForeignKey("bookings.id"))
-    payment_reference: Mapped[str] = mapped_column(String(100), unique=True)
+    payment_reference: Mapped[str] = mapped_column(
+        String(100), unique=True
+    )
     amount: Mapped[float] = mapped_column(Float)
-    status: Mapped[str] = mapped_column(String(30), default="simulated_success")
+    status: Mapped[str] = mapped_column(
+        String(30), default="simulated_success"
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=current_time
     )
@@ -117,7 +123,9 @@ class Ticket(Base):
     booking_id: Mapped[int] = mapped_column(ForeignKey("bookings.id"))
     event_id: Mapped[int] = mapped_column(ForeignKey("events.id"))
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
-    ticket_code: Mapped[str] = mapped_column(String(150), unique=True)
+    ticket_code: Mapped[str] = mapped_column(
+        String(150), unique=True
+    )
     status: Mapped[str] = mapped_column(String(30), default="valid")
     checked_in: Mapped[bool] = mapped_column(Boolean, default=False)
     checked_in_at: Mapped[datetime | None] = mapped_column(
@@ -165,7 +173,9 @@ class AgentMessage(Base):
     receiver: Mapped[str] = mapped_column(String(100))
     performative: Mapped[str] = mapped_column(String(20))
     content: Mapped[dict] = mapped_column(JSON)
-    conversation_id: Mapped[str] = mapped_column(String(100), index=True)
+    conversation_id: Mapped[str] = mapped_column(
+        String(100), index=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=current_time
     )
@@ -176,9 +186,12 @@ class AgentState(Base):
     __tablename__ = "agent_states"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    agent_name: Mapped[str] = mapped_column(String(100), unique=True)
+    agent_name: Mapped[str] = mapped_column(
+        String(100), unique=True
+    )
     state_data: Mapped[dict] = mapped_column(JSON, default=dict)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=current_time,
+        DateTime(timezone=True),
+        default=current_time,
         onupdate=current_time
     )
