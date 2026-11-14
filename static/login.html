@@ -1,0 +1,75 @@
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Login | EventSphere</title>
+
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+
+<body class="auth-body">
+
+    <a href="/" class="auth-back">← Back to Home</a>
+
+    <main class="auth-container">
+
+        <div class="auth-card">
+
+            <a href="/" class="logo auth-logo">
+                <span class="logo-icon">E</span>
+                EventSphere
+            </a>
+
+            <span class="section-label">WELCOME BACK</span>
+
+            <h1>Good to see you again.</h1>
+
+            <p class="auth-description">
+                Sign in to continue discovering amazing events.
+            </p>
+
+
+            <form id="loginForm">
+
+                <label for="email">Email address</label>
+
+                <input
+                    type="email"
+                    id="email"
+                    placeholder="Enter your email"
+                    required
+                >
+
+                <label for="password">Password</label>
+
+                <input
+                    type="password"
+                    id="password"
+                    placeholder="Enter your password"
+                    required
+                >
+
+                <button type="submit" class="btn btn-primary auth-submit">
+                    Log in →
+                </button>
+
+            </form>
+
+
+            <p class="auth-switch">
+                Don't have an account?
+                <a href="/register">Create an account</a>
+            </p>
+
+        </div>
+
+    </main>
+
+    <script src="/static/js/auth.js"></script>
+
+</body>
+</html>
