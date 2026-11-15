@@ -1,3 +1,4 @@
+
 from pathlib import Path
 import os
 
@@ -8,13 +9,23 @@ from starlette.middleware.sessions import SessionMiddleware
 from sqlalchemy import inspect
 
 from app.database.connection import create_database, engine
+
 from app.routers.auth import router as auth_router
 from app.routers.access import router as access_router
+from app.routers.venues import router as venues_router
 
+
+# --------------------------------------------------
+# PROJECT DIRECTORIES
+# --------------------------------------------------
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = BASE_DIR / "static"
 
+
+# --------------------------------------------------
+# FASTAPI APPLICATION
+# --------------------------------------------------
 
 app = FastAPI(
     title="EventSphere",
@@ -23,7 +34,10 @@ app = FastAPI(
 )
 
 
-# Session management
+# --------------------------------------------------
+# SESSION MIDDLEWARE
+# --------------------------------------------------
+
 app.add_middleware(
     SessionMiddleware,
     secret_key=os.environ.get(
@@ -35,7 +49,10 @@ app.add_middleware(
 )
 
 
-# Static files
+# --------------------------------------------------
+# STATIC FILES
+# --------------------------------------------------
+
 app.mount(
     "/static",
     StaticFiles(directory=STATIC_DIR),
@@ -43,36 +60,47 @@ app.mount(
 )
 
 
-# Register routers
+# --------------------------------------------------
+# REGISTER API ROUTERS
+# --------------------------------------------------
+
 app.include_router(auth_router)
 app.include_router(access_router)
+app.include_router(venues_router)
 
 
-# Database startup
+# --------------------------------------------------
+# DATABASE INITIALIZATION
+# --------------------------------------------------
+
 @app.on_event("startup")
 def startup():
     create_database()
 
 
-# Homepage
+# --------------------------------------------------
+# FRONTEND PAGES
+# --------------------------------------------------
+
 @app.get("/", include_in_schema=False)
 def homepage():
     return FileResponse(STATIC_DIR / "index.html")
 
 
-# Login page
 @app.get("/login", include_in_schema=False)
 def login_page():
     return FileResponse(STATIC_DIR / "login.html")
 
 
-# Registration page
 @app.get("/register", include_in_schema=False)
 def register_page():
     return FileResponse(STATIC_DIR / "register.html")
 
 
-# Health check
+# --------------------------------------------------
+# HEALTH CHECK
+# --------------------------------------------------
+
 @app.get("/api/health")
 def health_check():
     return {
@@ -82,7 +110,10 @@ def health_check():
     }
 
 
-# Database check
+# --------------------------------------------------
+# DATABASE STATUS
+# --------------------------------------------------
+
 @app.get("/api/database")
 def database_status():
 
