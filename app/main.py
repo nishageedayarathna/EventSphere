@@ -9,10 +9,12 @@ from sqlalchemy import inspect
 
 from app.database.connection import create_database, engine
 from app.routers.auth import router as auth_router
+from app.routers.access import router as access_router
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = BASE_DIR / "static"
+
 
 app = FastAPI(
     title="EventSphere",
@@ -20,7 +22,8 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Signed session cookies
+
+# Session management
 app.add_middleware(
     SessionMiddleware,
     secret_key=os.environ.get(
@@ -31,6 +34,7 @@ app.add_middleware(
     https_only=os.environ.get("ENVIRONMENT") == "production"
 )
 
+
 # Static files
 app.mount(
     "/static",
@@ -38,30 +42,37 @@ app.mount(
     name="static"
 )
 
-# Authentication routes
+
+# Register routers
 app.include_router(auth_router)
+app.include_router(access_router)
 
 
+# Database startup
 @app.on_event("startup")
 def startup():
     create_database()
 
 
+# Homepage
 @app.get("/", include_in_schema=False)
 def homepage():
     return FileResponse(STATIC_DIR / "index.html")
 
 
+# Login page
 @app.get("/login", include_in_schema=False)
 def login_page():
     return FileResponse(STATIC_DIR / "login.html")
 
 
+# Registration page
 @app.get("/register", include_in_schema=False)
 def register_page():
     return FileResponse(STATIC_DIR / "register.html")
 
 
+# Health check
 @app.get("/api/health")
 def health_check():
     return {
@@ -71,8 +82,10 @@ def health_check():
     }
 
 
+# Database check
 @app.get("/api/database")
 def database_status():
+
     inspector = inspect(engine)
 
     return {

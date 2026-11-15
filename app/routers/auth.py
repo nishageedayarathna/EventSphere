@@ -1,5 +1,4 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from app.database.connection import get_db
@@ -9,16 +8,39 @@ from app.services.auth_service import (
     hash_password,
     verify_password
 )
+from app.security.csrf import (
+    create_csrf_token,
+    verify_csrf_token
+)
+from app.security.dependencies import get_current_user
 
-router = APIRouter(prefix="/api/auth", tags=["Authentication"])
+
+router = APIRouter(
+    prefix="/api/auth",
+    tags=["Authentication"]
+)
+
+
+# GET CSRF TOKEN
+@router.get("/csrf")
+def get_csrf(request: Request):
+
+    return {
+        "csrf_token": create_csrf_token(request)
+    }
 
 
 # REGISTER ATTENDEE
-@router.post("/register", status_code=201)
+@router.post(
+    "/register",
+    status_code=201,
+    dependencies=[Depends(verify_csrf_token)]
+)
 def register(
     data: RegisterRequest,
     db: Session = Depends(get_db)
 ):
+
     existing_user = db.query(User).filter(
         User.email == data.email
     ).first()
@@ -52,12 +74,16 @@ def register(
 
 
 # LOGIN
-@router.post("/login")
+@router.post(
+    "/login",
+    dependencies=[Depends(verify_csrf_token)]
+)
 def login(
     data: LoginRequest,
     request: Request,
     db: Session = Depends(get_db)
 ):
+
     user = db.query(User).filter(
         User.email == data.email
     ).first()
@@ -77,13 +103,17 @@ def login(
             detail="This account is inactive"
         )
 
+    # Clear the previous session to prevent session fixation
     request.session.clear()
 
     request.session["user_id"] = user.id
-    request.session["role"] = user.role
+
+    # Create a new CSRF token for the authenticated session
+    csrf_token = create_csrf_token(request)
 
     return {
         "message": "Login successful",
+        "csrf_token": csrf_token,
         "user": {
             "id": user.id,
             "full_name": user.full_name,
@@ -93,43 +123,27 @@ def login(
     }
 
 
-# CURRENT LOGGED-IN USER
+# CURRENT USER
 @router.get("/me")
-def get_current_user(
-    request: Request,
-    db: Session = Depends(get_db)
+def get_me(
+    current_user: User = Depends(get_current_user)
 ):
-    user_id = request.session.get("user_id")
-
-    if not user_id:
-        raise HTTPException(
-            status_code=401,
-            detail="Please log in first"
-        )
-
-    user = db.query(User).filter(
-        User.id == user_id
-    ).first()
-
-    if not user or not user.is_active:
-        request.session.clear()
-
-        raise HTTPException(
-            status_code=401,
-            detail="User session is invalid"
-        )
 
     return {
-        "id": user.id,
-        "full_name": user.full_name,
-        "email": user.email,
-        "role": user.role
+        "id": current_user.id,
+        "full_name": current_user.full_name,
+        "email": current_user.email,
+        "role": current_user.role
     }
 
 
 # LOGOUT
-@router.post("/logout")
+@router.post(
+    "/logout",
+    dependencies=[Depends(verify_csrf_token)]
+)
 def logout(request: Request):
+
     request.session.clear()
 
     return {
