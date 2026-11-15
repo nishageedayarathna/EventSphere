@@ -13,6 +13,7 @@ from app.database.connection import create_database, engine
 from app.routers.auth import router as auth_router
 from app.routers.access import router as access_router
 from app.routers.venues import router as venues_router
+from app.routers.events import router as events_router
 
 
 # --------------------------------------------------
@@ -67,6 +68,8 @@ app.mount(
 app.include_router(auth_router)
 app.include_router(access_router)
 app.include_router(venues_router)
+app.include_router(events_router)
+
 
 
 # --------------------------------------------------
