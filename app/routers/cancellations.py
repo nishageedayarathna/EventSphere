@@ -10,10 +10,13 @@ from app.models.entities import (
     Payment,
     Ticket,
     TicketCategory,
-    Event
+    Event,
+    WaitlistEntry
 )
 from app.security.dependencies import require_attendee, require_admin
 from app.security.csrf import verify_csrf_token
+
+from app.agents.waitlist_agent import waitlist_agent
 
 
 router = APIRouter(
@@ -22,9 +25,14 @@ router = APIRouter(
 )
 
 
+# --------------------------------------------------
+# DATETIME AND REFUND FUNCTIONS
+# --------------------------------------------------
+
 def normalize_datetime(value):
     if value.tzinfo is not None:
         return value.astimezone(timezone.utc).replace(tzinfo=None)
+
     return value
 
 
@@ -44,8 +52,12 @@ def calculate_refund(amount, event_start):
     return round(float(amount) * percentage, 2), percentage
 
 
+# --------------------------------------------------
+# CANCEL BOOKING RECORDS
+# --------------------------------------------------
+
 def cancel_booking_records(db, booking, refund_amount):
-    """Update payment, booking, ticket and inventory records."""
+    """Update payment, booking, tickets and ticket inventory."""
 
     payment = db.query(Payment).filter(
         Payment.booking_id == booking.id
@@ -67,16 +79,16 @@ def cancel_booking_records(db, booking, refund_amount):
             detail="Ticket category not found"
         )
 
-    # Release the seats allocated to this booking.
     if category.sold_quantity < booking.quantity:
         raise HTTPException(
             status_code=409,
             detail="Ticket inventory is inconsistent; cancellation stopped"
         )
 
+    # Release the booked tickets.
     category.sold_quantity -= booking.quantity
 
-    # Invalidate every ticket belonging to this booking.
+    # Cancel all digital tickets for this booking.
     tickets = db.query(Ticket).filter(
         Ticket.booking_id == booking.id
     ).all()
@@ -92,6 +104,10 @@ def cancel_booking_records(db, booking, refund_amount):
     return len(tickets)
 
 
+# --------------------------------------------------
+# ATTENDEE CANCELS OWN BOOKING
+# --------------------------------------------------
+
 @router.post(
     "/booking/{booking_id}",
     dependencies=[Depends(verify_csrf_token)]
@@ -102,10 +118,15 @@ def cancel_my_booking(
     current_user=Depends(require_attendee)
 ):
 
-    booking = db.query(Booking).filter(
-        Booking.id == booking_id,
-        Booking.user_id == current_user.id
-    ).with_for_update().first()
+    booking = (
+        db.query(Booking)
+        .filter(
+            Booking.id == booking_id,
+            Booking.user_id == current_user.id
+        )
+        .with_for_update()
+        .first()
+    )
 
     if not booking:
         raise HTTPException(
@@ -135,7 +156,10 @@ def cancel_my_booking(
             detail="This event has already been cancelled"
         )
 
-    if datetime.now(timezone.utc).replace(tzinfo=None) >= normalize_datetime(event.start_time):
+    if (
+        datetime.now(timezone.utc).replace(tzinfo=None)
+        >= normalize_datetime(event.start_time)
+    ):
         raise HTTPException(
             status_code=400,
             detail="Bookings cannot be cancelled after the event has started"
@@ -146,6 +170,9 @@ def cancel_my_booking(
         event.start_time
     )
 
+    event_id = booking.event_id
+    category_id = booking.ticket_category_id
+
     try:
         ticket_count = cancel_booking_records(
             db,
@@ -155,26 +182,51 @@ def cancel_my_booking(
 
         db.commit()
 
-        return {
-            "message": "Booking cancelled successfully",
-            "booking_id": booking.id,
-            "booking_status": booking.status,
-            "original_amount": booking.total_amount,
-            "refund_percentage": int(refund_percentage * 100),
-            "refund_amount": refund_amount,
-            "payment_status": "refunded",
-            "tickets_cancelled": ticket_count,
-            "refund_policy": (
-                "More than 48 hours: 100%; "
-                "24 to 48 hours: 50%; "
-                "less than 24 hours: 0%"
-            )
-        }
-
     except Exception:
         db.rollback()
         raise
 
+    # --------------------------------------------------
+    # NOTIFY WAITLIST AGENT AFTER CANCELLATION
+    # --------------------------------------------------
+
+    # The cancellation is already committed.
+    # A waitlist processing failure must not undo it.
+    waitlist_result = None
+    waitlist_error = None
+
+    try:
+        waitlist_result = waitlist_agent.process_waitlist(
+            db,
+            event_id,
+            category_id
+        )
+
+    except Exception as error:
+        db.rollback()
+        waitlist_error = str(error)
+
+    return {
+        "message": "Booking cancelled successfully",
+        "booking_id": booking_id,
+        "booking_status": "cancelled",
+        "refund_percentage": int(refund_percentage * 100),
+        "refund_amount": refund_amount,
+        "payment_status": "refunded",
+        "tickets_cancelled": ticket_count,
+        "waitlist_result": waitlist_result,
+        "waitlist_error": waitlist_error,
+        "refund_policy": (
+            "More than 48 hours: 100%; "
+            "24 to 48 hours: 50%; "
+            "less than 24 hours: 0%"
+        )
+    }
+
+
+# --------------------------------------------------
+# ADMIN CANCELS EVENT AND REFUNDS BOOKINGS
+# --------------------------------------------------
 
 @router.post(
     "/event/{event_id}",
@@ -186,9 +238,12 @@ def cancel_event_and_refund(
     current_user=Depends(require_admin)
 ):
 
-    event = db.query(Event).filter(
-        Event.id == event_id
-    ).with_for_update().first()
+    event = (
+        db.query(Event)
+        .filter(Event.id == event_id)
+        .with_for_update()
+        .first()
+    )
 
     if not event:
         raise HTTPException(
@@ -203,16 +258,22 @@ def cancel_event_and_refund(
         )
 
     try:
-        bookings = db.query(Booking).filter(
-            Booking.event_id == event_id,
-            Booking.status == "confirmed"
-        ).with_for_update().all()
+        bookings = (
+            db.query(Booking)
+            .filter(
+                Booking.event_id == event_id,
+                Booking.status == "confirmed"
+            )
+            .with_for_update()
+            .all()
+        )
 
         total_refund = 0.0
         cancelled_bookings = 0
         cancelled_tickets = 0
 
         for booking in bookings:
+
             payment = db.query(Payment).filter(
                 Payment.booking_id == booking.id
             ).first()
@@ -220,7 +281,9 @@ def cancel_event_and_refund(
             if not payment:
                 raise HTTPException(
                     status_code=409,
-                    detail=f"Payment record missing for booking {booking.id}"
+                    detail=(
+                        f"Payment record missing for booking {booking.id}"
+                    )
                 )
 
             refund_amount = float(booking.total_amount)
@@ -236,16 +299,34 @@ def cancel_event_and_refund(
 
         event.status = "cancelled"
 
+        # Cancel all waiting and offered entries for this event.
+        waitlist_entries = db.query(
+            __import__(
+                "app.models.entities",
+                fromlist=["WaitlistEntry"]
+            ).WaitlistEntry
+        ).filter(
+            __import__(
+                "app.models.entities",
+                fromlist=["WaitlistEntry"]
+            ).WaitlistEntry.event_id == event_id
+        ).all()
+
+        for entry in waitlist_entries:
+            entry.status = "cancelled"
+            entry.hold_expires_at = None
+
         db.commit()
 
         return {
             "message": "Event cancelled and full refunds processed",
-            "event_id": event.id,
-            "event_status": event.status,
+            "event_id": event_id,
+            "event_status": "cancelled",
             "cancelled_bookings": cancelled_bookings,
             "cancelled_tickets": cancelled_tickets,
             "total_refund": round(total_refund, 2),
-            "refund_percentage": 100
+            "refund_percentage": 100,
+            "waitlist_entries_cancelled": len(waitlist_entries)
         }
 
     except Exception:
