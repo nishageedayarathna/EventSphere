@@ -1,3 +1,4 @@
+
 from sqlalchemy.orm import Session
 
 from app.models.entities import AgentState, Notification
@@ -11,80 +12,143 @@ class NotificationAgent:
     """
 
     @staticmethod
-    def handle_message(db: Session, message: dict):
-        if message.get("receiver") != "NotificationAgent":
+    def handle_message(
+        db: Session,
+        message: dict
+    ):
+
+        # Validate message
+        if not isinstance(message, dict):
             return {
-                "status": "REFUSE",
-                "reason": "Message is not addressed to NotificationAgent"
+                "performative": "REFUSE",
+                "content": {
+                    "reason": "Invalid message format"
+                }
             }
 
+        # Validate receiver
+        if message.get("receiver") != "NotificationAgent":
+            return {
+                "performative": "REFUSE",
+                "content": {
+                    "reason": "Message is not addressed to NotificationAgent"
+                }
+            }
+
+        # Validate performative
         if message.get("performative") != "INFORM":
             return {
-                "status": "REFUSE",
-                "reason": "NotificationAgent accepts INFORM messages only"
+                "performative": "REFUSE",
+                "content": {
+                    "reason": "NotificationAgent accepts INFORM messages only"
+                }
             }
 
         content = message.get("content", {})
+
+        if not isinstance(content, dict):
+            return {
+                "performative": "REFUSE",
+                "content": {
+                    "reason": "Invalid message content"
+                }
+            }
+
         user_id = content.get("user_id")
 
         if not user_id:
             return {
-                "status": "REFUSE",
-                "reason": "Missing user_id in notification message"
+                "performative": "REFUSE",
+                "content": {
+                    "reason": "Missing user_id"
+                }
             }
 
-        title = content.get("title", "EventSphere Notification")
+        title = content.get(
+            "title",
+            "EventSphere Notification"
+        )
+
         notification_message = content.get("message", "")
 
-        if not notification_message:
+        if (
+            not isinstance(notification_message, str)
+            or not notification_message.strip()
+        ):
             return {
-                "status": "REFUSE",
-                "reason": "Notification message cannot be empty"
+                "performative": "REFUSE",
+                "content": {
+                    "reason": "Notification message cannot be empty"
+                }
             }
 
-        notification = Notification(
-            user_id=user_id,
-            title=title,
-            message=notification_message
-        )
+        try:
 
-        db.add(notification)
-
-        # Update persistent agent state.
-        state = (
-            db.query(AgentState)
-            .filter(AgentState.agent_name == "NotificationAgent")
-            .first()
-        )
-
-        if not state:
-            state = AgentState(
-                agent_name="NotificationAgent",
-                state_data={"notifications_created": 0}
+            # Create user notification
+            notification = Notification(
+                user_id=user_id,
+                title=title,
+                message=notification_message.strip()
             )
-            db.add(state)
 
-        state_data = dict(state.state_data or {})
-        state_data["notifications_created"] = (
-            state_data.get("notifications_created", 0) + 1
-        )
-        state.state_data = state_data
+            db.add(notification)
+            db.flush()
 
-        db.commit()
-        db.refresh(notification)
+            # Get or create persistent agent state
+            state = (
+                db.query(AgentState)
+                .filter(
+                    AgentState.agent_name == "NotificationAgent"
+                )
+                .first()
+            )
 
-        return create_message(
-            db=db,
-            sender="NotificationAgent",
-            receiver=message.get("sender", "UnknownAgent"),
-            performative="AGREE",
-            content={
-                "notification_id": notification.id,
-                "user_id": user_id,
-                "status": "Notification created"
-            },
-            conversation_id=message.get("conversation_id")
-        )
+            if state is None:
+
+                state = AgentState(
+                    agent_name="NotificationAgent",
+                    state_data={
+                        "notifications_created": 0
+                    }
+                )
+
+                db.add(state)
+                db.flush()
+
+            # Update persistent state
+            state_data = dict(state.state_data or {})
+
+            state_data["notifications_created"] = (
+                state_data.get("notifications_created", 0) + 1
+            )
+
+            state.state_data = state_data
+
+            # Save notification and state
+            db.flush()
+
+            # Send response to original sender
+            response = create_message(
+                db=db,
+                sender="NotificationAgent",
+                receiver=message.get("sender", "UnknownAgent"),
+                performative="AGREE",
+                content={
+                    "notification_id": notification.id,
+                    "user_id": user_id,
+                    "status": "Notification created",
+                    "notifications_created": state_data[
+                        "notifications_created"
+                    ]
+                },
+                conversation_id=message.get("conversation_id")
+            )
+
+            return response
+
+        except Exception:
+            db.rollback()
+            raise
 
 
 notification_agent = NotificationAgent()

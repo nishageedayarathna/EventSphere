@@ -8,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from starlette.middleware.sessions import SessionMiddleware
 from sqlalchemy import inspect
+from fastapi.responses import FileResponse
 
 from app.database.connection import (
     create_database,
@@ -27,6 +28,8 @@ from app.routers.checkin import router as checkin_router
 from app.routers.cancellations import router as cancellations_router
 from app.routers.venue_hire import router as venue_hire_router
 from app.routers import waitlist
+from app.routers.admin import router as admin_router
+from app.routers.notifications import router as notifications_router
 
 
 # --------------------------------------------------
@@ -87,7 +90,8 @@ app.include_router(cancellations_router)
 app.include_router(venue_hire_router)
 app.include_router(waitlist.router)
 app.include_router(checkin_router)
-
+app.include_router(admin_router)
+app.include_router(notifications_router)
 
 # --------------------------------------------------
 # WAITLIST BACKGROUND SCHEDULER
@@ -204,3 +208,8 @@ def database_status():
         "status": "connected",
         "tables": inspector.get_table_names()
     }
+
+
+@app.get("/dashboard")
+def dashboard_page():
+    return FileResponse(STATIC_DIR / "dashboard.html")

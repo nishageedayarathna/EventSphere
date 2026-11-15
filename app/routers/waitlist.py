@@ -6,6 +6,7 @@ from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from app.database.connection import get_db
+
 from app.models.entities import (
     Event,
     TicketCategory,
@@ -13,6 +14,7 @@ from app.models.entities import (
     Booking,
     Payment
 )
+
 from app.security.dependencies import require_attendee
 from app.security.csrf import verify_csrf_token
 
@@ -40,10 +42,15 @@ def join_waitlist(
     current_user=Depends(require_attendee),
     csrf=Depends(verify_csrf_token)
 ):
-    event = db.query(Event).filter(
-        Event.id == event_id,
-        Event.status == "published"
-    ).first()
+
+    event = (
+        db.query(Event)
+        .filter(
+            Event.id == event_id,
+            Event.status == "published"
+        )
+        .first()
+    )
 
     if not event:
         raise HTTPException(
@@ -51,10 +58,14 @@ def join_waitlist(
             detail="Published event not found"
         )
 
-    category = db.query(TicketCategory).filter(
-        TicketCategory.id == ticket_category_id,
-        TicketCategory.event_id == event_id
-    ).first()
+    category = (
+        db.query(TicketCategory)
+        .filter(
+            TicketCategory.id == ticket_category_id,
+            TicketCategory.event_id == event_id
+        )
+        .first()
+    )
 
     if not category:
         raise HTTPException(
@@ -62,12 +73,16 @@ def join_waitlist(
             detail="Ticket category not found"
         )
 
-    existing = db.query(WaitlistEntry).filter(
-        WaitlistEntry.user_id == current_user.id,
-        WaitlistEntry.event_id == event_id,
-        WaitlistEntry.ticket_category_id == ticket_category_id,
-        WaitlistEntry.status.in_(["waiting", "offered"])
-    ).first()
+    existing = (
+        db.query(WaitlistEntry)
+        .filter(
+            WaitlistEntry.user_id == current_user.id,
+            WaitlistEntry.event_id == event_id,
+            WaitlistEntry.ticket_category_id == ticket_category_id,
+            WaitlistEntry.status.in_(["waiting", "offered"])
+        )
+        .first()
+    )
 
     if existing:
         raise HTTPException(
@@ -83,22 +98,73 @@ def join_waitlist(
             detail="Tickets are still available. Please book directly."
         )
 
-    entry = WaitlistEntry(
-        user_id=current_user.id,
-        event_id=event_id,
-        ticket_category_id=ticket_category_id,
-        status="waiting"
-    )
+    try:
 
-    db.add(entry)
-    db.commit()
-    db.refresh(entry)
+        # Create waitlist entry.
+        entry = WaitlistEntry(
+            user_id=current_user.id,
+            event_id=event_id,
+            ticket_category_id=ticket_category_id,
+            status="waiting"
+        )
 
-    return {
-        "message": "You have joined the waitlist",
-        "waitlist_entry_id": entry.id,
-        "status": entry.status
-    }
+        db.add(entry)
+        db.commit()
+        db.refresh(entry)
+
+        # Send structured REQUEST to WaitlistAgent.
+        conversation_message = create_message(
+            db=db,
+            sender="WaitlistAPI",
+            receiver="WaitlistAgent",
+            performative="REQUEST",
+            content={
+                "action": "JOIN_WAITLIST",
+                "user_id": current_user.id,
+                "waitlist_entry_id": entry.id,
+                "event_id": event_id,
+                "ticket_category_id": ticket_category_id
+            }
+        )
+
+        # WaitlistAgent processes the request.
+        agent_response = waitlist_agent.handle_message(
+            db,
+            conversation_message
+        )
+
+        if agent_response.get("performative") == "REFUSE":
+
+            return {
+                "message": "You joined the waitlist, but agent processing was refused.",
+                "waitlist_entry_id": entry.id,
+                "status": entry.status,
+                "agent_response": agent_response
+            }
+
+        db.commit()
+
+        return {
+            "message": "You have joined the waitlist successfully",
+            "waitlist_entry_id": entry.id,
+            "status": entry.status,
+            "agent_response": {
+                "decision": agent_response.get("performative"),
+                "details": agent_response.get("content")
+            }
+        }
+
+    except HTTPException:
+        db.rollback()
+        raise
+
+    except Exception as error:
+        db.rollback()
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Waitlist processing failed: {str(error)}"
+        )
 
 
 # --------------------------------------------------
@@ -110,10 +176,15 @@ def get_my_waitlist_entries(
     db: Session = Depends(get_db),
     current_user=Depends(require_attendee)
 ):
+
     entries = (
         db.query(WaitlistEntry)
-        .filter(WaitlistEntry.user_id == current_user.id)
-        .order_by(WaitlistEntry.id.desc())
+        .filter(
+            WaitlistEntry.user_id == current_user.id
+        )
+        .order_by(
+            WaitlistEntry.id.desc()
+        )
         .all()
     )
 
@@ -141,6 +212,7 @@ def accept_waitlist_offer(
     current_user=Depends(require_attendee),
     csrf=Depends(verify_csrf_token)
 ):
+
     entry = (
         db.query(WaitlistEntry)
         .filter(
@@ -169,14 +241,19 @@ def accept_waitlist_offer(
         expiry = expiry.replace(tzinfo=timezone.utc)
 
     if not expiry or expiry <= datetime.now(timezone.utc):
+
+        event_id = entry.event_id
+        category_id = entry.ticket_category_id
+
         entry.status = "expired"
         entry.hold_expires_at = None
+
         db.commit()
 
         waitlist_agent.process_waitlist(
             db,
-            entry.event_id,
-            entry.ticket_category_id
+            event_id,
+            category_id
         )
 
         raise HTTPException(
@@ -184,10 +261,14 @@ def accept_waitlist_offer(
             detail="Your ticket offer has expired"
         )
 
-    event = db.query(Event).filter(
-        Event.id == entry.event_id,
-        Event.status == "published"
-    ).first()
+    event = (
+        db.query(Event)
+        .filter(
+            Event.id == entry.event_id,
+            Event.status == "published"
+        )
+        .first()
+    )
 
     if not event:
         raise HTTPException(
@@ -195,10 +276,14 @@ def accept_waitlist_offer(
             detail="The event is no longer available"
         )
 
-    category = db.query(TicketCategory).filter(
-        TicketCategory.id == entry.ticket_category_id,
-        TicketCategory.event_id == entry.event_id
-    ).first()
+    category = (
+        db.query(TicketCategory)
+        .filter(
+            TicketCategory.id == entry.ticket_category_id,
+            TicketCategory.event_id == entry.event_id
+        )
+        .first()
+    )
 
     if not category:
         raise HTTPException(
@@ -219,9 +304,17 @@ def accept_waitlist_offer(
     )
 
     if inventory_result.rowcount != 1:
+
         entry.status = "waiting"
         entry.hold_expires_at = None
+
         db.commit()
+
+        waitlist_agent.process_waitlist(
+            db,
+            entry.event_id,
+            entry.ticket_category_id
+        )
 
         raise HTTPException(
             status_code=409,
@@ -242,7 +335,9 @@ def accept_waitlist_offer(
     db.add(booking)
     db.flush()
 
-    payment_reference = f"ES-WL-{booking.id}-{current_user.id}"
+    payment_reference = (
+        f"ES-WL-{booking.id}-{current_user.id}"
+    )
 
     payment = Payment(
         booking_id=booking.id,
@@ -257,17 +352,19 @@ def accept_waitlist_offer(
     entry.hold_expires_at = None
 
     try:
+
         db.commit()
         db.refresh(booking)
 
     except Exception:
         db.rollback()
+
         raise HTTPException(
             status_code=500,
             detail="Could not complete the waitlist booking"
         )
 
-    # Send a REQUEST message to TicketAgent.
+    # Send REQUEST to TicketAgent.
     ticket_message = create_message(
         db=db,
         sender="WaitlistAgent",
@@ -284,12 +381,31 @@ def accept_waitlist_offer(
     )
 
     if ticket_result.get("performative") != "AGREE":
+
+        db.commit()
+
         return {
-            "message": "Booking created, but ticket generation needs attention",
+            "message": (
+                "Booking created, but ticket generation needs attention"
+            ),
             "booking_id": booking.id,
             "payment_reference": payment_reference,
             "ticket_agent_response": ticket_result
         }
+
+    db.commit()
+
+    # Update WaitlistAgent state.
+    waitlist_agent.update_state(
+        db,
+        {
+            "last_accepted_entry_id": entry.id,
+            "last_accepted_booking_id": booking.id,
+            "last_accepted_user_id": current_user.id,
+            "last_action": "WAITLIST_OFFER_ACCEPTED",
+            "last_processed_at": datetime.now(timezone.utc).isoformat()
+        }
+    )
 
     return {
         "message": "Waitlist offer accepted successfully",
@@ -313,10 +429,15 @@ def decline_waitlist_offer(
     current_user=Depends(require_attendee),
     csrf=Depends(verify_csrf_token)
 ):
-    entry = db.query(WaitlistEntry).filter(
-        WaitlistEntry.id == entry_id,
-        WaitlistEntry.user_id == current_user.id
-    ).first()
+
+    entry = (
+        db.query(WaitlistEntry)
+        .filter(
+            WaitlistEntry.id == entry_id,
+            WaitlistEntry.user_id == current_user.id
+        )
+        .first()
+    )
 
     if not entry:
         raise HTTPException(
@@ -337,6 +458,16 @@ def decline_waitlist_offer(
     entry.hold_expires_at = None
 
     db.commit()
+
+    waitlist_agent.update_state(
+        db,
+        {
+            "last_declined_entry_id": entry.id,
+            "last_declined_user_id": current_user.id,
+            "last_action": "WAITLIST_OFFER_DECLINED",
+            "last_processed_at": datetime.now(timezone.utc).isoformat()
+        }
+    )
 
     next_offer = waitlist_agent.process_waitlist(
         db,

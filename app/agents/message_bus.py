@@ -15,7 +15,7 @@ def create_message(
     conversation_id: str = None
 ):
     """
-    Create and store a JSON agent message.
+    Create and store a structured JSON agent message.
     """
 
     if conversation_id is None:
@@ -38,7 +38,7 @@ def create_message(
     )
 
     db.add(message_record)
-    db.commit()
+    db.flush()
 
     return message
 
@@ -48,7 +48,7 @@ def send_message(
     message: dict
 ):
     """
-    Store a message received from an agent.
+    Store an incoming agent message.
     """
 
     required_fields = [
@@ -74,6 +74,30 @@ def send_message(
     )
 
     db.add(message_record)
-    db.commit()
+    db.flush()
 
     return message
+
+
+def deliver_message(
+    db: Session,
+    message: dict
+):
+    """
+    Deliver messages to the registered agent handlers.
+    """
+
+    receiver = message.get("receiver")
+
+    if receiver == "NotificationAgent":
+
+        from app.agents.notification_agent import notification_agent
+
+        return notification_agent.handle_message(
+            db,
+            message
+        )
+
+    raise ValueError(
+        f"No handler registered for agent: {receiver}"
+    )

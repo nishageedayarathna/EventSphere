@@ -1,22 +1,407 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>EventSphere Dashboard</title><link rel="stylesheet" href="/static/css/style.css"><style>
-body{background:#f7f9fc;color:#26344a;margin:0}.layout{display:grid;grid-template-columns:245px 1fr;min-height:100vh}.side{background:#26344a;color:#fff;padding:22px 15px}.side h2{margin:0 0 20px}.side button{display:block;width:100%;border:0;background:transparent;color:white;text-align:left;padding:11px;border-radius:8px;margin:4px 0;cursor:pointer}.side button:hover,.side button.active{background:#5678e8}.side .logout{background:#40536f;margin-top:20px}.main{padding:25px;min-width:0}.top{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.section{display:none}.section.active{display:block}.card{background:#fff;border:1px solid #e8ecf3;border-radius:12px;padding:18px;margin:14px 0}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}.stat{font-size:26px;color:#5678e8;font-weight:bold}.form{display:grid;gap:10px;max-width:650px}.form input,.form textarea,.form select{padding:11px;border:1px solid #dce2ec;border-radius:7px;font:inherit;width:100%;box-sizing:border-box}.form button,.btn{border:0;background:#5678e8;color:white;border-radius:7px;padding:10px 14px;cursor:pointer;margin:3px}.btn.red{background:#c94b55}.btn.gray{background:#64748b}.tablewrap{overflow:auto}.table{width:100%;border-collapse:collapse;background:#fff}.table th,.table td{text-align:left;padding:10px;border-bottom:1px solid #e8ecf3;vertical-align:top}.out{background:#eef3ff;padding:12px;border-radius:8px;white-space:pre-wrap;overflow-wrap:anywhere}.muted{color:#758197}.hidden{display:none!important}@media(max-width:720px){.layout{grid-template-columns:1fr}.side{display:flex;flex-wrap:wrap;gap:4px}.side h2{width:100%}.side button{width:auto}.main{padding:14px}}
-</style></head><body><div class="layout"><aside class="side"><h2>EventSphere</h2>
-<div id="attendeeNav" class="hidden"><button class="active" data-tab="overview">Overview</button><button data-tab="events">Browse Events</button><button data-tab="bookings">My Bookings</button><button data-tab="tickets">My QR Tickets</button><button data-tab="waitlist">Waitlist</button><button data-tab="hire">Private Hire</button><button data-tab="myhire">My Hire Requests</button><button data-tab="notifications">Notifications</button></div>
-<div id="adminNav" class="hidden"><button class="active" data-tab="overview">Overview</button><button data-tab="events">Manage Events</button><button data-tab="venues">Manage Venues</button><button data-tab="hireadmin">Hire Approvals</button><button data-tab="stats">Dashboard Statistics</button><button data-tab="agents">Agent Message Logs</button><button data-tab="notifications">My Notifications</button></div>
-<div id="staffNav" class="hidden"><button class="active" data-tab="overview">Overview</button><button data-tab="checkin">Ticket Check-in</button><button data-tab="notifications">My Notifications</button></div>
-<button class="logout" id="logout">Log out</button></aside>
-<main class="main"><header class="top"><div><h1 id="title">Dashboard</h1><p class="muted">Signed in as <b id="fullname">...</b> · <span id="role"></span></p></div><a href="/">Home</a></header>
-<section id="s-overview" class="section active"><div class="grid"><div class="card">Role<div id="statRole" class="stat">-</div></div><div class="card">Email<div id="statEmail" style="font-size:17px;margin-top:8px">-</div></div></div><div class="card"><h3>Agent workflow demonstration</h3><p>Run the relevant action below. The API response shows which agent accepted or refused the request.</p><div id="agentResult" class="out">No agent action yet.</div></div></section>
-<section id="s-events" class="section"><div class="card"><h2>Events</h2><button class="btn" id="loadEvents">Refresh events</button><div id="events"></div></div><div id="eventCreateCard" class="card hidden"><h3>Create event (draft)</h3><form id="eventForm" class="form"><input name="title" placeholder="Title" required><input name="category" placeholder="Category" required><select name="venue_id" id="eventVenue" required><option value="">Select venue</option></select><label>Start <input type="datetime-local" name="start_time" required></label><label>End <input type="datetime-local" name="end_time" required></label><textarea name="description" placeholder="Description"></textarea><h4>Ticket category</h4><input name="ticket_name" placeholder="Category name" required><input type="number" name="ticket_price" min="0" step=".01" placeholder="Price" required><input type="number" name="ticket_quantity" min="1" placeholder="Quantity" required><button class="btn">Create draft</button></form></div></section>
-<section id="s-venues" class="section"><div class="card"><h2>Create venue</h2><form id="venueForm" class="form"><input name="name" placeholder="Venue name" required><input name="location" placeholder="Location" required><input name="capacity" type="number" min="1" placeholder="Capacity" required><textarea name="description" placeholder="Description"></textarea><input name="image" placeholder="Image path (optional)"><input name="hourly_hire_rate" type="number" min="0" step=".01" placeholder="Hourly rate" required><label><input type="checkbox" name="open_for_private_hire" checked> Open for private hire</label><button class="btn">Create venue</button></form><button class="btn" id="loadVenues">Refresh venues</button><div id="venues"></div></div></section>
-<section id="s-bookings" class="section"><div class="card"><h2>My bookings</h2><button class="btn" id="loadBookings">Refresh</button><div id="bookings"></div></div></section>
-<section id="s-tickets" class="section"><div class="card"><h2>My QR tickets</h2><button class="btn" id="loadTickets">Refresh</button><div id="tickets"></div></div></section>
-<section id="s-waitlist" class="section"><div class="card"><h2>Join waitlist</h2><form id="waitForm" class="form"><input type="number" name="event_id" min="1" placeholder="Event ID" required><input type="number" name="ticket_category_id" min="1" placeholder="Ticket category ID" required><button class="btn">Join waitlist</button></form></div><div class="card"><h3>My waitlist entries</h3><button class="btn" id="loadWaitlist">Refresh</button><div id="waitlist"></div></div></section>
-<section id="s-hire" class="section"><div class="card"><h2>Request private venue hire</h2><form id="hireForm" class="form"><select name="venue_id" id="hireVenue" required><option value="">Select venue</option></select><label>Start <input type="datetime-local" name="start_time" required></label><label>End <input type="datetime-local" name="end_time" required></label><input type="number" name="guest_count" min="1" placeholder="Guest count" required><textarea name="purpose" placeholder="Purpose" required></textarea><button class="btn">Submit request</button></form><div id="hireResult" class="out"></div></div></section>
-<section id="s-myhire" class="section"><div class="card"><h2>My venue hire requests</h2><button class="btn" id="loadMyHire">Refresh</button><div id="myhire"></div></div></section>
-<section id="s-hireadmin" class="section"><div class="card"><h2>Pending private hire approvals</h2><button class="btn" id="loadPendingHire">Refresh</button><div id="pendingHire"></div></div></section>
-<section id="s-checkin" class="section"><div class="card"><h2>Staff ticket check-in</h2><form id="checkinForm" class="form"><select name="event_id" id="checkinEvent" required><option value="">Select event</option></select><input name="ticket_code" placeholder="Ticket code" required><button class="btn">Verify and admit</button></form><div id="checkinResult" class="out"></div><p class="muted">Manual ticket-code check-in is enabled. Camera scanning is not included yet.</p></div></section>
-<section id="s-stats" class="section"><div class="card"><h2>Admin dashboard statistics</h2><button class="btn" id="loadStats">Refresh statistics</button><div id="stats" class="out"></div></div></section>
-<section id="s-agents" class="section"><div class="card"><h2>Agent message history</h2><button class="btn" id="loadAgentMessages">Refresh messages</button><div id="agentMessages"></div></div><div class="card"><h3>Persistent agent states</h3><button class="btn" id="loadAgentStates">Refresh states</button><div id="agentStates"></div></div></section>
-<section id="s-notifications" class="section"><div class="card"><h2>Notifications</h2><button class="btn" id="loadNotifications">Refresh</button><div id="notifications"></div></div></section>
-</main></div><script src="/static/js/dashboard.js"></script></body></html>
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#26344a">
+  <title>EventSphere | Dashboard</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="stylesheet" href="/static/css/dashboard.css">
+</head>
+<body class="dashboard-page">
+
+  <svg class="svg-sprite" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
+    <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18M8 14h3"/></symbol>
+    <symbol id="i-ticket" viewBox="0 0 24 24"><path d="M4 7a2 2 0 0 0 0 4v2a2 2 0 0 0 0 4h16v-4a2 2 0 0 1 0-4V5H4z"/><path d="M13 5v2m0 3v2m0 3v2"/></symbol>
+    <symbol id="i-building" viewBox="0 0 24 24"><path d="M3 21h18M5 21V5l7-2 7 2v16M9 8h1m4 0h1M9 12h1m4 0h1M10 21v-5h4v5"/></symbol>
+    <symbol id="i-users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></symbol>
+    <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 19V5m0 14h17"/><rect x="7" y="11" width="3" height="5" rx="1"/><rect x="13" y="7" width="3" height="9" rx="1"/><rect x="19" y="3" width="3" height="13" rx="1"/></symbol>
+    <symbol id="i-activity" viewBox="0 0 24 24"><path d="M3 12h4l3-8 4 16 3-8h4"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-6v-7h-4v7H4a1 1 0 0 1-1-1z"/></symbol>
+    <symbol id="i-log-out" viewBox="0 0 24 24"><path d="M10 17l5-5-5-5m5 5H3"/><path d="M12 3h7a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-7"/></symbol>
+    <symbol id="i-scan" viewBox="0 0 24 24"><path d="M4 8V5a1 1 0 0 1 1-1h3m8 0h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3m-8 0H5a1 1 0 0 1-1-1v-3M4 12h16"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M5.5 9a7 7 0 0 1 11.6-2L20 12M4 12l2.9 5a7 7 0 0 0 11.6-2"/></symbol>
+  </svg>
+
+  <div class="dashboard-shell">
+    <aside class="sidebar">
+      <a class="brand" href="/">
+        <span class="brand-mark">E</span>
+        <span class="brand-name">EventSphere<small>EVENT MANAGEMENT</small></span>
+      </a>
+
+      <div class="sidebar-caption">WORKSPACE</div>
+
+      <nav class="sidebar-nav" aria-label="Dashboard navigation">
+        <div id="attendeeNav" class="nav-group hidden">
+          <button class="nav-item active" type="button" data-tab="overview"><svg><use href="#i-grid"/></svg><span>Overview</span></button>
+          <button class="nav-item" type="button" data-tab="events"><svg><use href="#i-calendar"/></svg><span>Explore events</span></button>
+          <button class="nav-item" type="button" data-tab="bookings"><svg><use href="#i-ticket"/></svg><span>My bookings</span></button>
+          <button class="nav-item" type="button" data-tab="tickets"><svg><use href="#i-scan"/></svg><span>My QR tickets</span></button>
+          <button class="nav-item" type="button" data-tab="waitlist"><svg><use href="#i-clock"/></svg><span>Waitlist</span></button>
+          <button class="nav-item" type="button" data-tab="hire"><svg><use href="#i-building"/></svg><span>Private hire</span></button>
+          <button class="nav-item" type="button" data-tab="myhire"><svg><use href="#i-calendar"/></svg><span>My hire requests</span></button>
+          <button class="nav-item" type="button" data-tab="notifications"><svg><use href="#i-bell"/></svg><span>Notifications</span></button>
+        </div>
+
+        <div id="adminNav" class="nav-group hidden">
+          <button class="nav-item active" type="button" data-tab="overview"><svg><use href="#i-grid"/></svg><span>Overview</span></button>
+          <button class="nav-item" type="button" data-tab="events"><svg><use href="#i-calendar"/></svg><span>Manage events</span></button>
+          <button class="nav-item" type="button" data-tab="venues"><svg><use href="#i-building"/></svg><span>Manage venues</span></button>
+          <button class="nav-item" type="button" data-tab="hireadmin"><svg><use href="#i-clock"/></svg><span>Hire approvals</span></button>
+          <button class="nav-item" type="button" data-tab="stats"><svg><use href="#i-chart"/></svg><span>Statistics</span></button>
+          <button class="nav-item" type="button" data-tab="agents"><svg><use href="#i-activity"/></svg><span>Agent activity</span></button>
+          <button class="nav-item" type="button" data-tab="notifications"><svg><use href="#i-bell"/></svg><span>Notifications</span></button>
+        </div>
+
+        <div id="staffNav" class="nav-group hidden">
+          <button class="nav-item active" type="button" data-tab="overview"><svg><use href="#i-grid"/></svg><span>Overview</span></button>
+          <button class="nav-item" type="button" data-tab="checkin"><svg><use href="#i-scan"/></svg><span>Ticket check-in</span></button>
+          <button class="nav-item" type="button" data-tab="notifications"><svg><use href="#i-bell"/></svg><span>Notifications</span></button>
+        </div>
+      </nav>
+
+      <div class="sidebar-bottom">
+        <a class="home-link" href="/"><svg><use href="#i-home"/></svg><span>Back to website</span></a>
+        <button class="logout-button" id="logout" type="button"><svg><use href="#i-log-out"/></svg><span>Log out</span></button>
+        <div class="sidebar-footnote">Made for moments that matter.</div>
+      </div>
+    </aside>
+
+    <main class="main-panel">
+      <header class="topbar">
+        <div class="topbar-heading">
+          <span class="topbar-kicker">EVENTSPHERE WORKSPACE</span>
+          <h1 id="title">Dashboard</h1>
+          <p>Welcome back, <strong id="fullname">...</strong><span class="role-separator">·</span><span id="role" class="role-label"></span></p>
+        </div>
+
+        <div class="topbar-actions">
+          <a class="top-home" href="/" aria-label="Go to homepage"><svg><use href="#i-home"/></svg><span>Visit website</span></a>
+          <div class="profile-chip">
+            <span class="profile-avatar" id="profileInitial">E</span>
+            <span class="profile-chip-text"><strong id="profileName">Your account</strong><small>Signed in</small></span>
+          </div>
+        </div>
+      </header>
+
+      <div class="content-wrap">
+
+        <section id="s-overview" class="section active">
+          <div class="welcome-banner">
+            <div>
+              <span class="banner-eyebrow">YOUR EVENT SPACE</span>
+              <h2>Make every moment count.</h2>
+              <p>Manage events, bookings and experiences from one place.</p>
+            </div>
+            <div class="banner-art" aria-hidden="true">
+              <span class="art-circle art-one"></span>
+              <span class="art-circle art-two"></span>
+              <span class="art-star">✦</span>
+              <span class="art-ticket">EVENT<br><b>PASS</b></span>
+            </div>
+          </div>
+
+          <div class="section-intro">
+            <span class="section-kicker">AT A GLANCE</span>
+            <h2>Your overview</h2>
+            <p>A quick look at your EventSphere account.</p>
+          </div>
+
+          <div class="overview-grid">
+            <article class="overview-card">
+              <span class="overview-icon violet"><svg><use href="#i-users"/></svg></span>
+              <div>
+                <span class="overview-label">ACCOUNT ROLE</span>
+                <strong id="statRole" class="overview-value">—</strong>
+                <small>Your access level</small>
+              </div>
+            </article>
+            <article class="overview-card">
+              <span class="overview-icon blue"><svg><use href="#i-bell"/></svg></span>
+              <div>
+                <span class="overview-label">EMAIL ADDRESS</span>
+                <strong id="statEmail" class="overview-email">—</strong>
+                <small>Account information</small>
+              </div>
+            </article>
+          </div>
+
+          <article class="panel-card workflow-card">
+            <div class="panel-heading">
+              <div>
+                <span class="section-kicker">MULTI-AGENT SYSTEM</span>
+                <h3>Agent workflow activity</h3>
+                <p>Responses from the agents appear here after you perform an action.</p>
+              </div>
+              <span class="live-indicator"><i></i> SYSTEM READY</span>
+            </div>
+            <div id="agentResult" class="out empty-state">No agent action yet. Your activity responses will appear here.</div>
+          </article>
+        </section>
+
+        <section id="s-events" class="section">
+          <div class="section-intro section-intro-row">
+            <div><span class="section-kicker">DISCOVER & ORGANISE</span><h2>Events</h2><p>Explore upcoming experiences or manage your event listings.</p></div>
+            <button class="btn btn-primary" type="button" id="loadEvents"><svg><use href="#i-refresh"/></svg>Refresh events</button>
+          </div>
+          <div id="events" class="dynamic-grid"></div>
+
+          <article id="eventCreateCard" class="panel-card hidden">
+            <div class="panel-heading">
+              <div><span class="section-kicker">EVENT MANAGEMENT</span><h3>Create a new event</h3><p>New events are saved as drafts until published.</p></div>
+              <span class="panel-icon"><svg><use href="#i-plus"/></svg></span>
+            </div>
+            <form id="eventForm" class="form form-grid">
+              <label>Event title<input name="title" placeholder="e.g. Annual Cultural Night" required></label>
+              <label>Category<input name="category" placeholder="Concert, Workshop..." required></label>
+              <label class="full-field">Venue<select name="venue_id" id="eventVenue" required><option value="">Select venue</option></select></label>
+              <label>Start date & time<input type="datetime-local" name="start_time" required></label>
+              <label>End date & time<input type="datetime-local" name="end_time" required></label>
+              <label class="full-field">Description<textarea name="description" placeholder="Tell attendees what to expect..."></textarea></label>
+              <div class="form-divider full-field"><span>TICKET CATEGORY</span></div>
+              <label>Category name<input name="ticket_name" placeholder="General admission" required></label>
+              <label>Ticket price (Rs.)<input type="number" name="ticket_price" min="0" step=".01" placeholder="0.00" required></label>
+              <label class="full-field">Ticket quantity<input type="number" name="ticket_quantity" min="1" placeholder="Number of tickets" required></label>
+              <div class="form-actions full-field"><button class="btn btn-primary" type="submit"><svg><use href="#i-plus"/></svg>Create draft event</button></div>
+            </form>
+          </article>
+        </section>
+
+        <section id="s-venues" class="section">
+          <div class="section-intro section-intro-row">
+            <div><span class="section-kicker">VENUE DIRECTORY</span><h2>Manage venues</h2><p>Create and maintain spaces available for events and private hire.</p></div>
+            <button class="btn btn-outline" type="button" id="loadVenues"><svg><use href="#i-refresh"/></svg>Refresh</button>
+          </div>
+
+          <article class="panel-card">
+            <div class="panel-heading"><div><h3>Add a venue</h3><p>Enter the venue details below.</p></div></div>
+            <form id="venueForm" class="form form-grid">
+              <label>Venue name<input name="name" placeholder="Venue name" required></label>
+              <label>Location<input name="location" placeholder="Location" required></label>
+              <label>Capacity<input name="capacity" type="number" min="1" placeholder="Maximum guests" required></label>
+              <label>Hourly hire rate (Rs.)<input name="hourly_hire_rate" type="number" min="0" step=".01" placeholder="Hourly rate" required></label>
+              <label class="full-field">Description<textarea name="description" placeholder="Venue description"></textarea></label>
+              <label class="full-field">Image path (optional)<input name="image" placeholder="/static/images/venue.jpg"></label>
+              <label class="checkbox-field full-field"><input type="checkbox" name="open_for_private_hire" checked> Available for private hire</label>
+              <div class="form-actions full-field"><button class="btn btn-primary" type="submit">Create venue</button></div>
+            </form>
+          </article>
+
+          <article class="panel-card">
+            <div class="panel-heading"><div><h3>Venue list</h3><p>Current venues in the system.</p></div></div>
+            <div id="venues"></div>
+          </article>
+        </section>
+
+        <section id="s-bookings" class="section">
+          <div class="section-intro section-intro-row">
+            <div><span class="section-kicker">YOUR ACTIVITY</span><h2>My bookings</h2><p>Review your reservations and booking status.</p></div>
+            <button class="btn btn-outline" type="button" id="loadBookings"><svg><use href="#i-refresh"/></svg>Refresh</button>
+          </div>
+          <article class="panel-card"><div id="bookings"></div></article>
+        </section>
+
+        <section id="s-tickets" class="section">
+          <div class="section-intro section-intro-row">
+            <div><span class="section-kicker">DIGITAL ADMISSION</span><h2>My QR tickets</h2><p>Keep your ticket QR codes ready for event entry.</p></div>
+            <button class="btn btn-outline" type="button" id="loadTickets"><svg><use href="#i-refresh"/></svg>Refresh</button>
+          </div>
+          <article class="panel-card"><div id="tickets"></div></article>
+        </section>
+
+        <section id="s-waitlist" class="section">
+          <div class="section-intro"><span class="section-kicker">DON'T MISS OUT</span><h2>Event waitlist</h2><p>Join a waitlist and get notified when a place becomes available.</p></div>
+          <article class="panel-card">
+            <div class="panel-heading"><div><h3>Join a waitlist</h3><p>Enter the event and ticket category details.</p></div></div>
+            <form id="waitForm" class="form form-grid">
+              <label>Event ID<input type="number" name="event_id" min="1" placeholder="Event ID" required></label>
+              <label>Ticket category ID<input type="number" name="ticket_category_id" min="1" placeholder="Ticket category ID" required></label>
+              <div class="form-actions full-field"><button class="btn btn-primary" type="submit">Join waitlist</button></div>
+            </form>
+          </article>
+          <article class="panel-card">
+            <div class="panel-heading panel-heading-row">
+              <div><h3>My waitlist entries</h3><p>Track your current waitlist status.</p></div>
+              <button class="btn btn-outline btn-small" type="button" id="loadWaitlist"><svg><use href="#i-refresh"/></svg>Refresh</button>
+            </div>
+            <div id="waitlist"></div>
+          </article>
+        </section>
+
+        <section id="s-hire" class="section">
+          <div class="section-intro"><span class="section-kicker">PLAN YOUR OCCASION</span><h2>Private venue hire</h2><p>Request a venue for your own event or special occasion.</p></div>
+          <article class="panel-card">
+            <div class="panel-heading"><div><h3>Request a venue</h3><p>Share your event details to receive a hire decision and quote.</p></div></div>
+            <form id="hireForm" class="form form-grid">
+              <label class="full-field">Venue<select name="venue_id" id="hireVenue" required><option value="">Select venue</option></select></label>
+              <label>Start date & time<input type="datetime-local" name="start_time" required></label>
+              <label>End date & time<input type="datetime-local" name="end_time" required></label>
+              <label>Expected guests<input type="number" name="guest_count" min="1" placeholder="Guest count" required></label>
+              <label class="full-field">Purpose<textarea name="purpose" placeholder="Tell us about your occasion..." required></textarea></label>
+              <div class="form-actions full-field"><button class="btn btn-primary" type="submit">Submit hire request</button></div>
+            </form>
+            <div id="hireResult" class="out result-output"></div>
+          </article>
+        </section>
+
+        <section id="s-myhire" class="section">
+          <div class="section-intro section-intro-row">
+            <div><span class="section-kicker">REQUEST HISTORY</span><h2>My hire requests</h2><p>Check the progress of your private venue requests.</p></div>
+            <button class="btn btn-outline" type="button" id="loadMyHire"><svg><use href="#i-refresh"/></svg>Refresh</button>
+          </div>
+          <article class="panel-card"><div id="myhire"></div></article>
+        </section>
+
+        <section id="s-hireadmin" class="section">
+          <div class="section-intro section-intro-row">
+            <div><span class="section-kicker">ADMINISTRATION</span><h2>Hire approvals</h2><p>Review and decide on pending private hire requests.</p></div>
+            <button class="btn btn-outline" type="button" id="loadPendingHire"><svg><use href="#i-refresh"/></svg>Refresh</button>
+          </div>
+          <article class="panel-card"><div id="pendingHire"></div></article>
+        </section>
+
+        
+<section id="s-checkin" class="section">
+
+    <div class="section-intro">
+        <span class="section-kicker">EVENT ENTRY</span>
+        <h2>Ticket check-in</h2>
+        <p>Scan attendee QR tickets or enter ticket codes manually.</p>
+    </div>
+
+    <article class="panel-card checkin-panel">
+
+        <div class="checkin-symbol">
+            <svg><use href="#i-scan"/></svg>
+        </div>
+
+        <h3>QR Code Scanner</h3>
+
+        <label>
+            Select Event
+            <select name="event_id" id="checkinEvent" required>
+                <option value="">Select event</option>
+            </select>
+        </label>
+
+        <div id="qr-reader" style="width:100%; max-width:450px; margin:20px auto;"></div>
+
+        <div class="form-actions">
+            <button type="button" class="btn btn-primary" id="startQrScanner">
+                Start Camera
+            </button>
+
+            <button type="button" class="btn btn-outline" id="stopQrScanner">
+                Stop Camera
+            </button>
+        </div>
+
+        <p class="helper-note">
+            Point your camera at the attendee's ticket QR code.
+        </p>
+
+        <hr>
+
+        <h3>Manual Ticket Entry</h3>
+
+        <form id="checkinForm" class="form">
+
+            <input
+                type="text"
+                name="ticket_code"
+                id="checkinTicketCode"
+                placeholder="Enter ticket code"
+                required
+            >
+
+            <button class="btn btn-primary" type="submit">
+                Verify and Admit
+            </button>
+
+        </form>
+
+        <div id="checkinResult" class="out result-output"></div>
+
+    </article>
+
+</section>
+
+
+        <section id="s-stats" class="section">
+          <div class="section-intro section-intro-row">
+            <div><span class="section-kicker">PERFORMANCE</span><h2>Dashboard statistics</h2><p>Review EventSphere activity and event performance.</p></div>
+            <button class="btn btn-outline" type="button" id="loadStats"><svg><use href="#i-refresh"/></svg>Refresh statistics</button>
+          </div>
+          <div id="stats" class="stats-grid"></div>
+        </section>
+
+        <section id="s-agents" class="section">
+          <div class="section-intro"><span class="section-kicker">SYSTEM INTELLIGENCE</span><h2>Agent activity</h2><p>Inspect agent messages and persistent agent states.</p></div>
+          <article class="panel-card">
+            <div class="panel-heading panel-heading-row">
+              <div><h3>Agent message history</h3><p>Recent communication between agents.</p></div>
+              <button class="btn btn-outline btn-small" type="button" id="loadAgentMessages"><svg><use href="#i-refresh"/></svg>Refresh</button>
+            </div>
+            <div id="agentMessages"></div>
+          </article>
+          <article class="panel-card">
+            <div class="panel-heading panel-heading-row">
+              <div><h3>Persistent agent states</h3><p>Stored beliefs and current agent state.</p></div>
+              <button class="btn btn-outline btn-small" type="button" id="loadAgentStates"><svg><use href="#i-refresh"/></svg>Refresh</button>
+            </div>
+            <div id="agentStates"></div>
+          </article>
+        </section>
+
+        <section id="s-notifications" class="section">
+          <div class="section-intro section-intro-row">
+            <div><span class="section-kicker">UPDATES</span><h2>Notifications</h2><p>Stay informed about your EventSphere activity.</p></div>
+            <button class="btn btn-outline" type="button" id="loadNotifications"><svg><use href="#i-refresh"/></svg>Refresh</button>
+          </div>
+          <article class="panel-card"><div id="notifications"></div></article>
+        </section>
+
+      </div>
+
+      <footer class="dashboard-footer">
+        <span>© 2026 EventSphere</span>
+        <span>Discover events. Create memories.</span>
+      </footer>
+    </main>
+  </div>
+
+  <script src="https://unpkg.com/html5-qrcode"></script>
+<script src="/static/js/dashboard.js" defer></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const name = document.getElementById('fullname');
+      const avatar = document.getElementById('profileInitial');
+      const profileName = document.getElementById('profileName');
+
+      const syncProfile = () => {
+        if (name && name.textContent && name.textContent !== '...') {
+          const value = name.textContent.trim();
+          if (avatar) avatar.textContent = value.charAt(0).toUpperCase();
+          if (profileName) profileName.textContent = value;
+        }
+      };
+
+      if (name) {
+        new MutationObserver(syncProfile).observe(name, {
+          childList: true,
+          characterData: true,
+          subtree: true
+        });
+      }
+
+      syncProfile();
+    });
+  </script>
+</body>
+</html>

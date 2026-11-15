@@ -1,7 +1,7 @@
 
 import uuid
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -19,6 +19,7 @@ router = APIRouter(
 )
 
 
+# Request model
 class CheckinRequest(BaseModel):
 
     event_id: int = Field(gt=0)
@@ -29,6 +30,7 @@ class CheckinRequest(BaseModel):
     )
 
 
+# Scan ticket endpoint
 @router.post(
     "/scan",
     dependencies=[Depends(verify_csrf_token)]
@@ -39,29 +41,52 @@ def scan_ticket(
     current_user=Depends(require_staff)
 ):
 
+    # Generate unique conversation ID
     conversation_id = str(uuid.uuid4())
 
-    # Create a REQUEST message for CheckinAgent
+    # Create a structured REQUEST message
     message = {
         "sender": "CheckinAPI",
         "receiver": "CheckinAgent",
         "performative": "REQUEST",
         "content": {
             "event_id": data.event_id,
-            "ticket_code": data.ticket_code
+            "ticket_code": data.ticket_code.strip()
         },
         "conversation_id": conversation_id
     }
 
-    # Send message to CheckinAgent
-    response = handle_checkin_request(
-        db,
-        message
-    )
+    try:
 
-    return {
-        "message": "Check-in request processed",
-        "decision": response["performative"],
-        "details": response["content"],
-        "conversation_id": conversation_id
-    }
+        # Send request to CheckinAgent
+        response = handle_checkin_request(
+            db,
+            message
+        )
+
+        # Validate agent response
+        if not response or "performative" not in response:
+            raise HTTPException(
+                status_code=500,
+                detail="CheckinAgent returned an invalid response"
+            )
+
+        # Return admission decision
+        return {
+            "message": "Check-in request processed",
+            "decision": response["performative"],
+            "details": response.get("content", {}),
+            "conversation_id": conversation_id
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as error:
+
+        db.rollback()
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Check-in processing failed: {str(error)}"
+        )

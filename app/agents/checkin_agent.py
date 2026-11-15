@@ -1,5 +1,5 @@
 
-from datetime import datetime, timezone
+from datetime import datetime
 
 from sqlalchemy.orm import Session
 from sqlalchemy import update
@@ -13,8 +13,12 @@ class CheckinAgent:
     name = "CheckinAgent"
 
     def normalize_datetime(self, value):
+        """
+        Convert timezone-aware datetime values to local naive datetime.
+        Naive database timestamps are assumed to use local time.
+        """
         if value.tzinfo is not None:
-            return value.astimezone(timezone.utc).replace(tzinfo=None)
+            return value.astimezone().replace(tzinfo=None)
 
         return value
 
@@ -141,6 +145,7 @@ class CheckinAgent:
                 conversation_id
             )
 
+        # Check event status
         if event.status == "cancelled":
             return self.send_response(
                 db,
@@ -150,7 +155,7 @@ class CheckinAgent:
                 conversation_id
             )
 
-        # Check event time
+        # Check event time using local time
         now = datetime.now()
 
         event_start = self.normalize_datetime(event.start_time)
