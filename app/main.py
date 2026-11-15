@@ -16,6 +16,7 @@ from app.routers.venues import router as venues_router
 from app.routers.events import router as events_router
 from app.routers.bookings import router as bookings_router
 from app.routers.checkin import router as checkin_router
+from app.routers.cancellations import router as cancellations_router
 
 # --------------------------------------------------
 # PROJECT DIRECTORIES
@@ -71,7 +72,7 @@ app.include_router(access_router)
 app.include_router(venues_router)
 app.include_router(events_router)
 app.include_router(bookings_router)
-app.include_router(checkin_router)
+app.include_router(cancellations_router)
 
 
 # --------------------------------------------------
